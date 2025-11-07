@@ -1,0 +1,53 @@
+name: CRD-Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  crd-windows:
+    runs-on: windows-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: Set up Chrome Remote Desktop
+        run: |
+          Write-Host "🔐 Installing Chrome Remote Desktop..."
+          $crdMsi = "$env:TEMP\chromeremotedesktophost.msi"
+          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $crdMsi
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$crdMsi`"", "/quiet", "/norestart" -Wait
+          Remove-Item $crdMsi -Force
+         
+      - name: Bring up Tailscale
+        run: |
+          Write-Host "🔑 Bringing up Tailscale..."
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+         
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-crd-$env:GITHUB_RUN_ID
+          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+
+      - name: Register Chrome Remote Desktop Host
+        run: |
+          Write-Host "🔑 Registering Chrome Remote Desktop host..."
+          $authCode = "4/0Ab32j91DMglfbdEMinuf2kbl1AVRHCK4ERjNWHRHt_qcFYKJnvpTFO5Dj3M_RyyDqGirTw"
+          $pin = "12345678"
+          & "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" `
+              --code="$authCode" `
+              --redirect-url="https://remotedesktop.google.com/_/oauthredirect" `
+              --name="$Env:COMPUTERNAME" `
+              --pin="$pin"
+
+      - name: Keep CRD Online
+        run: |
+          Write-Host "`n=== Chrome Remote Desktop Active ==="
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          Write-Host "Connect via Chrome Remote Desktop web using the PIN 12345678"
+          Write-Host "==============================`n"
+          while ($true) {
+              Write-Host "[$(Get-Date)] CRD active..."
+              Start-Sleep -Seconds 300
+          }
