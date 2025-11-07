@@ -33,7 +33,7 @@ jobs:
       - name: Register Chrome Remote Desktop Host
         run: |
           Write-Host "🔑 Registering Chrome Remote Desktop host..."
-          $authCode = "4/0Ab32j91DMglfbdEMinuf2kbl1AVRHCK4ERjNWHRHt_qcFYKJnvpTFO5Dj3M_RyyDqGirTw"
+          $authCode = "4/0Ab32j914BaAwKxDTry4Cky2puvsxZlOcARib3fBl8Tx4HtFDgVBZsRZHNCM5W9bghpY8Rg"
           $pin = "12345678"
           & "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" `
               --code="$authCode" `
