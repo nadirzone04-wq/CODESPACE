@@ -11,10 +11,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Instalar Dependencias (Tailscale, TigerVNC, noVNC)
+      - name: Instalar Dependencias
         run: |
-          # Instalamos todo lo necesario
-          brew install tailscale tigervnc novnc
+          # Corregido: tiger-vnc con guion
+          brew install tailscale tiger-vnc novnc
           
           # Iniciar Tailscale
           sudo tailscaled > /dev/null 2>&1 &
@@ -24,32 +24,36 @@ jobs:
       - name: Configurar Servidor VNC
         run: |
           mkdir -p ~/.vnc
+          # Configurar contraseña 'password123'
           echo "password123" | vncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
           
-          # Lanzar TigerVNC en el puerto 5901
-          vncserver :1 -geometry 1280x720 -depth 24
+          # Crear un archivo xstartup básico para que cargue la interfaz
+          echo "#!/bin/sh" > ~/.vnc/xstartup
+          echo "exec /usr/bin/login -f runner" >> ~/.vnc/xstartup
+          chmod +x ~/.vnc/xstartup
+
+          # Lanzar el servidor en el puerto 5901
+          # Nota: Usamos el binario con el nombre correcto de brew
+          /opt/homebrew/bin/vncserver :1 -geometry 1280x720 -depth 24
           sleep 3
 
       - name: Lanzar noVNC (Puerto 8080)
         run: |
-          # novnc_proxy conecta el puerto 8080 del navegador al 5901 del VNC
-          # Lo lanzamos en background (&)
-          /opt/homebrew/bin/novnc_proxy --vnc localhost:5901 --listen 8080 &
+          # Localizamos el ejecutable de novnc (el nombre varía según la versión de brew)
+          NOVNC_PATH=$(find /opt/homebrew/bin -name "novnc_proxy" | head -n 1)
+          $NOVNC_PATH --vnc localhost:5901 --listen 8080 &
           sleep 5
 
       - name: ACCESO POR NAVEGADOR
         run: |
           IP=$(tailscale ip -4)
           echo "========================================================="
-          echo "1. ASEGÚRATE DE QUE TU TAILSCALE ESTÁ CONECTADO"
-          echo "2. ABRE ESTA URL EN TU NAVEGADOR:"
-          echo ""
+          echo "URL DE ACCESO (Necesitas Tailscale activo en tu PC):"
           echo "http://$IP:8080/vnc.html"
-          echo ""
-          echo "3. HAZ CLIC EN 'CONNECT' Y PON LA CONTRASEÑA"
-          echo "CONTRASEÑA: password123"
+          echo "========================================================="
+          echo "Password: password123"
           echo "========================================================="
 
-      - name: Mantener vivo (1 hora)
+      - name: Mantener vivo
         run: sleep 3600
