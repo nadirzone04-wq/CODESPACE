@@ -1,53 +1,53 @@
-name: CRD-Windows
+name: Debug macOS VNC
 
-on:
-  workflow_dispatch:
+on: 
+  workflow_dispatch: # Esto permite lanzarlo manualmente con un botón
 
 jobs:
-  crd-windows:
-    runs-on: windows-latest
-    timeout-minutes: 3600
-
+  debug-mac:
+    runs-on: macos-latest
+    
     steps:
-      - name: Set up Chrome Remote Desktop
-        run: |
-          Write-Host "🔐 Installing Chrome Remote Desktop..."
-          $crdMsi = "$env:TEMP\chromeremotedesktophost.msi"
-          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $crdMsi
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$crdMsi`"", "/quiet", "/norestart" -Wait
-          Remove-Item $crdMsi -Force
-         
-      - name: Bring up Tailscale
-        run: |
-          Write-Host "🔑 Bringing up Tailscale..."
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
-         
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-crd-$env:GITHUB_RUN_ID
-          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Register Chrome Remote Desktop Host
+      - name: Instalar y Configurar Ngrok
         run: |
-          Write-Host "🔑 Registering Chrome Remote Desktop host..."
-          $authCode = "4/0Ab32j914BaAwKxDTry4Cky2puvsxZlOcARib3fBl8Tx4HtFDgVBZsRZHNCM5W9bghpY8Rg"
-          $pin = "12345678"
-          & "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" `
-              --code="$authCode" `
-              --redirect-url="https://remotedesktop.google.com/_/oauthredirect" `
-              --name="$Env:COMPUTERNAME" `
-              --pin="$pin"
+          brew install ngrok/ngrok/ngrok
+          ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
 
-      - name: Keep CRD Online
+      - name: Activar VNC (Screen Sharing)
         run: |
-          Write-Host "`n=== Chrome Remote Desktop Active ==="
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          Write-Host "Connect via Chrome Remote Desktop web using the PIN 12345678"
-          Write-Host "==============================`n"
-          while ($true) {
-              Write-Host "[$(Get-Date)] CRD active..."
-              Start-Sleep -Seconds 300
-          }
+          # Establecer contraseña (Cámbiala aquí si quieres, ahora es 'password123')
+          VNC_PASSWORD="password123"
+          
+          # Habilitar el servicio de gestión remota de Apple (Kickstart)
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -activate -configure -access -on \
+          -clientopts -setvnclegacy -vnclegacy yes \
+          -clientopts -setvncpw -vncpw "$VNC_PASSWORD" \
+          -restart -agent -privs -all
+          
+          echo "VNC Activado."
+
+      - name: Iniciar Túnel Ngrok
+        run: |
+          # Inicia ngrok en el puerto 5900 (Puerto por defecto de VNC) en segundo plano
+          ngrok tcp 5900 &
+          
+          echo "Esperando a que se inicie el túnel..."
+          sleep 10
+          
+          # Obtener la URL pública
+          echo "========================================================="
+          echo "   COPIA ESTA DIRECCIÓN EN TU VISOR VNC (RealVNC, etc):"
+          curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
+          echo "========================================================="
+          echo "   La contraseña es: password123"
+          echo "========================================================="
+
+      - name: Mantener vivo (Loop)
+        run: |
+          # Mantiene el runner activo hasta 1 hora o hasta que lo canceles
+          # (GitHub mata el proceso a las 6h máx, pero mejor no abusar)
+          sleep 3600
