@@ -1,7 +1,7 @@
-name: Debug macOS VNC (Tailscale)
+name: Debug macOS VNC (Tailscale Manual)
 
 on: 
-  workflow_dispatch: # Botón manual
+  workflow_dispatch:
 
 jobs:
   debug-mac:
@@ -9,48 +9,45 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # 1. Conectar el Runner a tu red Tailscale
-      - name: Conectar a Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          # Si usas Auth Key directa (más fácil), comenta las dos líneas de arriba 
-          # y descomenta la de abajo:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-          version: latest
-          hostname: github-runner-macbox
+      - name: Instalar Tailscale en macOS
+        run: |
+          # Instalar Tailscale usando Homebrew
+          brew install tailscale
+          
+          # Iniciar el demonio de Tailscale (necesario en macOS para que el CLI funcione)
+          sudo tailscaled > /dev/null 2>&1 &
+          sleep 5
+          
+          # Loguearse usando la Auth Key
+          # Usamos --accept-routes para evitar conflictos de red
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=github-mac-runner
 
-      # 2. Configurar VNC (Gestión Remota de Apple)
       - name: Configurar VNC (Screen Sharing)
         run: |
-          # Contraseña para entrar al VNC
           VNC_PASSWORD="password123"
           
-          # Habilitar el servicio nativo de macOS
+          # Comando oficial de Apple para activar el escritorio remoto
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate -configure -access -on \
           -clientopts -setvnclegacy -vnclegacy yes \
-          -clientopts -setvncpw -vncpw "$VNC_PASSWORD" \
+          -clientopts -setvnpw -vncpw "$VNC_PASSWORD" \
           -restart -agent -privs -all
           
           echo "VNC Activado correctamente."
 
-      # 3. Mostrar la IP para conectarte
       - name: OBTENER IP DE CONEXIÓN
         run: |
           echo "========================================================="
-          echo "ESTA MÁQUINA YA ESTÁ EN TU RED TAILSCALE."
-          echo "LA IP A LA QUE DEBES CONECTARTE ES:"
+          echo "CONECTA TU PC LOCAL A TAILSCALE PRIMERO"
+          echo "LUEGO, EN TU VISOR VNC, USA ESTA IP:"
           echo ""
           tailscale ip -4
           echo ""
-          echo "========================================================="
-          echo "Usa tu cliente VNC contra esa IP. Pass: password123"
+          echo "Usuario: runner"
+          echo "Password VNC: password123"
           echo "========================================================="
 
-      # 4. Mantener vivo (1 hora)
-      - name: Mantener vivo
+      - name: Mantener vivo (1 hora)
         run: sleep 3600
