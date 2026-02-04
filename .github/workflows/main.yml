@@ -1,93 +1,69 @@
-name: CRD-MacOS-Manual
+name: MacOS-NoVNC-Tailscale
 
 on:
   workflow_dispatch:
 
 jobs:
-  crd-macos:
+  novnc-tailscale:
     runs-on: macos-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Set Wallpaper
+      - name: 1. Activar VNC Nativo de macOS
         run: |
-          echo "🖼️ Setting custom Wallpaper..."
-          # Usamos -A "Mozilla..." para simular ser un navegador y evitar bloqueo 403/404
-          curl -L -A "Mozilla/5.0" -o "$HOME/wallpaper.jpg" "https://drive.google.com/uc?export=download&id=1SmRFyijibBDEbnhYSilSGoxtD_-N2KXu"
+          echo "🖥️ Activando Apple Remote Desktop..."
+          # Definimos contraseña estándar para VNC
+          VNC_PASSWORD="password"
           
-          # Intentar aplicar fondo (con fallback por si falla en modo headless)
-          osascript -e "tell application \"System Events\" to set picture of every desktop to \"$HOME/wallpaper.jpg\"" || true
+          # Comando de administración remota de Apple (kickstart)
+          # Habilita el acceso VNC legado y configura permisos
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -access -on \
+            -clientopts -setvnclegacy -vnclegacy yes \
+            -clientopts -setvncpw -vncpw "$VNC_PASSWORD" \
+            -restart -agent -privs -all
+          
+          echo "✅ VNC activo en puerto 5900"
 
-      - name: Set up Chrome Remote Desktop
+      - name: 2. Instalar noVNC (Puente Web)
         run: |
-          echo "⬇️ Downloading Chrome Remote Desktop..."
-          dmg_path="$HOME/crd.dmg"
+          echo "🌐 Preparando entorno Web..."
+          # Clonamos el visor web
+          git clone https://github.com/novnc/noVNC.git
           
-          # 1. Descarga MANUAL forzando User-Agent (Fix del error 404)
-          # Usamos la URL oficial (sin 'edgedl') y fingimos ser Safari/Chrome
-          curl -L -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-               -o "$dmg_path" \
-               "https://dl.google.com/chrome-remote-desktop/chromeremotedesktophost.dmg"
+          # Lanzamos el proxy en segundo plano (&)
+          # Esto redirige el puerto web 6080 al puerto VNC 5900
+          ./noVNC/utils/novnc_proxy --vnc localhost:5900 --listen 6080 &
           
-          # 2. Montar el DMG
-          echo "💿 Mounting DMG..."
-          hdiutil attach "$dmg_path" -nobrowse
-          
-          # 3. Instalar el paquete .pkg que hay dentro (como un .msi en Windows)
-          echo "📦 Installing PKG..."
-          sudo installer -pkg /Volumes/Chrome\ Remote\ Desktop\ Host/Chrome\ Remote\ Desktop\ Host.pkg -target /
-          
-          # 4. Limpieza
-          hdiutil detach /Volumes/Chrome\ Remote\ Desktop\ Host
-          rm "$dmg_path"
+          echo "✅ Web Server listo en puerto 6080"
 
-      - name: Bring up Tailscale
+      - name: 3. Conectar a Tailscale
         run: |
-          echo "🔒 Installing Tailscale..."
-          # En macOS, la forma más estable de instalar el servicio es brew (es nativo)
-          # Descargar el .pkg manualmente suele fallar al registrar el servicio del sistema
+          echo "🔒 Conectando a la red privada..."
           brew install tailscale
-          
-          # Levantar el daemon del sistema
           sudo tailscaled install-system-daemon
           
-          echo "🔑 Connecting to Tailscale..."
-          # Autenticación
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gh-mac-$GITHUB_RUN_ID" --accept-routes
+          # Generamos nombre único
+          TS_HOSTNAME="gh-mac-novnc-$GITHUB_RUN_ID"
           
-          # Sacar IP
+          # Conectamos
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="$TS_HOSTNAME"
+          
+          # Guardamos la IP para mostrarla luego
           TS_IP=$(tailscale ip -4)
-          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
+          echo "TS_IP=$TS_IP" >> $GITHUB_ENV
 
-      - name: Register Chrome Remote Desktop Host
+      - name: 4. DATOS DE CONEXIÓN
         run: |
-          echo "🚀 Registering CRD Host..."
+          echo "======================================================="
+          echo "🎉 SISTEMA LISTO"
+          echo ""
+          echo "1. Asegúrate de tener Tailscale conectado en tu PC."
+          echo "2. Abre esta URL en tu navegador:"
+          echo ""
+          echo "   http://$TS_IP:6080/vnc.html?password=password&autoconnect=true"
+          echo ""
+          echo "======================================================="
           
-          # REEMPLAZA TU CÓDIGO AQUÍ (Caduca rápido)
-          # Generar en: https://remotedesktop.google.com/headless
-          AUTH_CODE="4/0AVGzR1AR-AZjzXJpq4cq7daqk-H6U3gmJNl1TqBxgABRwJqd04KU-A1hZEQHN78PhtBV2w"
-          PIN="123456"
-          HOSTNAME=$(hostname)
-          
-          # Esta es la ruta donde el instalador (paso 2) ha dejado el programa
-          APP_BIN="/Applications/Chrome Remote Desktop Host.app/Contents/MacOS/remoting_start_host"
-          
-          "$APP_BIN" \
-            --code="$AUTH_CODE" \
-            --redirect-url="https://remotedesktop.google.com/_/oauthredirect" \
-            --name="$HOSTNAME" \
-            --pin="$PIN"
-
-      - name: Keep CRD Online
-        run: |
-          echo "==================================="
-          echo "✅ macOS Ready"
-          echo "IP Tailscale: $TAILSCALE_IP"
-          echo "PIN: 123456"
-          echo "==================================="
-          
-          # Loop infinito (versión Bash)
-          while true; do
-            echo "[$(date)] Keep alive..."
-            sleep 300
-          done
+          # Bucle infinito para mantener la sesión
+          while true; do sleep 300; done
