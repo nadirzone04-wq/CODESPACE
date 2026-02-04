@@ -1,4 +1,4 @@
-name: CRD-MacOS-Stable
+name: CRD-MacOS-Fixed-UserAgent
 
 on:
   workflow_dispatch:
@@ -9,68 +9,66 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Set Wallpaper (Optional)
-        run: |
-          echo "🖼️ Downloading wallpaper..."
-          # Usamos un User-Agent falso para que Google Drive no bloquee la descarga
-          curl -L -A "Mozilla/5.0" -o "$HOME/wallpaper.jpg" "https://drive.google.com/uc?export=download&id=1SmRFyijibBDEbnhYSilSGoxtD_-N2KXu"
-          
-          # Intentamos poner el fondo, si falla (porque no hay pantalla física), ignoramos el error con "|| true"
-          osascript -e "tell application \"System Events\" to set picture of every desktop to \"$HOME/wallpaper.jpg\"" || true
-
-      - name: Install Chrome Remote Desktop
-        run: |
-          echo "🍺 Installing Chrome Remote Desktop via Homebrew..."
-          # Esta es la forma correcta en Mac: dejamos que brew gestione la descarga e instalación
-          brew install --cask chrome-remote-desktop-host
-
       - name: Install & Setup Tailscale
         run: |
           echo "🔒 Installing Tailscale..."
           brew install tailscale
-          
-          # Iniciar el servicio de sistema (requiere sudo en Mac)
           sudo tailscaled install-system-daemon
           
           echo "🔑 Authenticating Tailscale..."
-          # Generamos un nombre único para no tener conflictos
           TS_HOSTNAME="gh-mac-$GITHUB_RUN_ID"
-          
-          # Conectamos
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="$TS_HOSTNAME" --accept-routes
           
-          # Guardamos la IP en variable de entorno
           TS_IP=$(tailscale ip -4)
           echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
 
+      - name: Install Chrome Remote Desktop (Manual Spoofing)
+        run: |
+          echo "⬇️ Downloading CRD with User-Agent Spoofing..."
+          
+          CRD_DMG="$HOME/chromeremotedesktophost.dmg"
+          
+          # TRUCO: Usamos -A para simular ser un navegador Chrome real y evitar el error 404/403
+          curl -L -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+               -o "$CRD_DMG" \
+               "https://dl.google.com/chrome-remote-desktop/chromeremotedesktophost.dmg"
+
+          echo "💿 Mounting DMG..."
+          hdiutil attach "$CRD_DMG" -nobrowse
+          
+          echo "📦 Installing PKG..."
+          # La ruta dentro del DMG suele ser estándar
+          sudo installer -pkg /Volumes/Chrome\ Remote\ Desktop\ Host/Chrome\ Remote\ Desktop\ Host.pkg -target /
+          
+          echo "🧹 Cleaning up..."
+          hdiutil detach /Volumes/Chrome\ Remote\ Desktop\ Host
+          rm "$CRD_DMG"
+
       - name: Register Chrome Remote Desktop Host
         run: |
-          echo "🚀 Registering CRD..."
+          echo "🚀 Registering Chrome Remote Desktop host..."
           
-          # ⚠️ OJO: El código de autorización (AUTH_CODE) caduca muy rápido.
-          # Debes generar uno nuevo en https://remotedesktop.google.com/headless justo antes de ejecutar.
+          # ⚠️ IMPORTANTE: El código expira en 5 minutos.
+          # Genera uno nuevo aquí antes de ejecutar: https://remotedesktop.google.com/headless
           AUTH_CODE="4/0ASc3gC13cmzYwMBeCPJvr6SYXRu_21S36VSTr332O1W86SoZXRpnE6TihBHmb7v6Mf_RVQ"
           PIN="123456"
           HOSTNAME=$(hostname)
           
-          # Ruta exacta donde Homebrew instala la app en macOS
-          APP_PATH="/Applications/Chrome Remote Desktop Host.app/Contents/MacOS/remoting_start_host"
+          # Ruta del binario instalado
+          APP_BIN="/Applications/Chrome Remote Desktop Host.app/Contents/MacOS/remoting_start_host"
           
-          "$APP_PATH" \
+          "$APP_BIN" \
             --code="$AUTH_CODE" \
             --redirect-url="https://remotedesktop.google.com/_/oauthredirect" \
             --name="$HOSTNAME" \
             --pin="$PIN"
 
-      - name: Keep Online
+      - name: Keep CRD Online
         run: |
-          echo ""
           echo "=== 🍎 macOS System Ready ==="
-          echo "IP Tailscale: $TAILSCALE_IP"
+          echo "Tailscale IP: $TAILSCALE_IP"
           echo "PIN: 123456"
           echo "============================="
-          
-          # Bucle infinito para que no se cierre el runner
           while true; do
             sleep 300
           done
