@@ -1,4 +1,4 @@
-name: CRD-MacOS-Final
+name: CRD-MacOS-Stable
 
 on:
   workflow_dispatch:
@@ -12,65 +12,65 @@ jobs:
       - name: Set Wallpaper (Optional)
         run: |
           echo "🖼️ Downloading wallpaper..."
-          WALLPAPER_URL="https://drive.google.com/uc?export=download&id=1SmRFyijibBDEbnhYSilSGoxtD_-N2KXu"
-          WALLPAPER_PATH="$HOME/wallpaper.jpg"
-          # Usamos User-Agent para evitar bloqueos de Google Drive
-          curl -L -A "Mozilla/5.0" -o "$WALLPAPER_PATH" "$WALLPAPER_URL"
+          # Usamos un User-Agent falso para que Google Drive no bloquee la descarga
+          curl -L -A "Mozilla/5.0" -o "$HOME/wallpaper.jpg" "https://drive.google.com/uc?export=download&id=1SmRFyijibBDEbnhYSilSGoxtD_-N2KXu"
           
-          # Intentar poner el fondo (puede fallar en headless, usamos || true para no romper el workflow)
-          osascript -e "tell application \"System Events\" to set picture of every desktop to \"$WALLPAPER_PATH\"" || true
+          # Intentamos poner el fondo, si falla (porque no hay pantalla física), ignoramos el error con "|| true"
+          osascript -e "tell application \"System Events\" to set picture of every desktop to \"$HOME/wallpaper.jpg\"" || true
 
-      - name: Install Chrome Remote Desktop (via Homebrew)
+      - name: Install Chrome Remote Desktop
         run: |
           echo "🍺 Installing Chrome Remote Desktop via Homebrew..."
-          # Homebrew gestiona la URL y el montaje del DMG automáticamente
+          # Esta es la forma correcta en Mac: dejamos que brew gestione la descarga e instalación
           brew install --cask chrome-remote-desktop-host
 
-      - name: Install Tailscale
+      - name: Install & Setup Tailscale
         run: |
           echo "🔒 Installing Tailscale..."
           brew install tailscale
           
-          # Iniciar el servicio
+          # Iniciar el servicio de sistema (requiere sudo en Mac)
           sudo tailscaled install-system-daemon
           
           echo "🔑 Authenticating Tailscale..."
-          TS_HOSTNAME="gh-crd-mac-$GITHUB_RUN_ID"
+          # Generamos un nombre único para no tener conflictos
+          TS_HOSTNAME="gh-mac-$GITHUB_RUN_ID"
           
-          # Conectar
+          # Conectamos
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="$TS_HOSTNAME" --accept-routes
           
-          # Guardar IP
+          # Guardamos la IP en variable de entorno
           TS_IP=$(tailscale ip -4)
           echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
 
       - name: Register Chrome Remote Desktop Host
         run: |
-          echo "🚀 Registering Chrome Remote Desktop host..."
+          echo "🚀 Registering CRD..."
           
-          # ⚠️ IMPORTANTE: Genera un código nuevo en https://remotedesktop.google.com/headless
-          # El código caduca en minutos, debes actualizarlo antes de dar Run Workflow
+          # ⚠️ OJO: El código de autorización (AUTH_CODE) caduca muy rápido.
+          # Debes generar uno nuevo en https://remotedesktop.google.com/headless justo antes de ejecutar.
           AUTH_CODE="4/0ASc3gC13cmzYwMBeCPJvr6SYXRu_21S36VSTr332O1W86SoZXRpnE6TihBHmb7v6Mf_RVQ"
           PIN="123456"
           HOSTNAME=$(hostname)
           
-          # Ejecutar el registro
-          "/Applications/Chrome Remote Desktop Host.app/Contents/MacOS/remoting_start_host" \
+          # Ruta exacta donde Homebrew instala la app en macOS
+          APP_PATH="/Applications/Chrome Remote Desktop Host.app/Contents/MacOS/remoting_start_host"
+          
+          "$APP_PATH" \
             --code="$AUTH_CODE" \
             --redirect-url="https://remotedesktop.google.com/_/oauthredirect" \
             --name="$HOSTNAME" \
             --pin="$PIN"
 
-      - name: Keep CRD Online
+      - name: Keep Online
         run: |
           echo ""
-          echo "=== 🍎 Chrome Remote Desktop Active (macOS) ==="
-          echo "Tailscale IP: $TAILSCALE_IP" 
-          echo "Connect via Chrome Remote Desktop web using the PIN 123456"
-          echo "============================================"
+          echo "=== 🍎 macOS System Ready ==="
+          echo "IP Tailscale: $TAILSCALE_IP"
+          echo "PIN: 123456"
+          echo "============================="
           
-          # Loop infinito
+          # Bucle infinito para que no se cierre el runner
           while true; do
-            echo "[$(date)] CRD active... session alive."
             sleep 300
           done
