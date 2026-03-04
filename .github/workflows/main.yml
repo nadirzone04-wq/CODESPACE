@@ -1,69 +1,67 @@
-name: MacOS-NoVNC-Tailscale
+name: CRD-Windows
 
 on:
   workflow_dispatch:
 
 jobs:
-  novnc-tailscale:
-    runs-on: macos-latest
+  crd-windows:
+    runs-on: windows-latest
     timeout-minutes: 3600
 
     steps:
-      - name: 1. Activar VNC Nativo de macOS
+      - name: Set Wallpaper
         run: |
-          echo "🖥️ Activando Apple Remote Desktop..."
-          # Definimos contraseña estándar para VNC
-          VNC_PASSWORD="password"
-          
-          # Comando de administración remota de Apple (kickstart)
-          # Habilita el acceso VNC legado y configura permisos
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -activate -configure -access -on \
-            -clientopts -setvnclegacy -vnclegacy yes \
-            -clientopts -setvncpw -vncpw "$VNC_PASSWORD" \
-            -restart -agent -privs -all
-          
-          echo "✅ VNC activo en puerto 5900"
+          Write-Host "🖼️ Setting custom Windows wallpaper..."
+          # 🔽 Reemplaza este enlace por el link directo de tu imagen (jpg/png)
+          $wallpaperUrl = "https://drive.google.com/uc?export=download&id=1SmRFyijibBDEbnhYSilSGoxtD_-N2KXu"
+          $wallpaperPath = "$env:USERPROFILE\wallpaper.jpg"
 
-      - name: 2. Instalar noVNC (Puente Web)
-        run: |
-          echo "🌐 Preparando entorno Web..."
-          # Clonamos el visor web
-          git clone https://github.com/novnc/noVNC.git
-          
-          # Lanzamos el proxy en segundo plano (&)
-          # Esto redirige el puerto web 6080 al puerto VNC 5900
-          ./noVNC/utils/novnc_proxy --vnc localhost:5900 --listen 6080 &
-          
-          echo "✅ Web Server listo en puerto 6080"
+          # Descargar imagen
+          Invoke-WebRequest -Uri $wallpaperUrl -OutFile $wallpaperPath
 
-      - name: 3. Conectar a Tailscale
-        run: |
-          echo "🔒 Conectando a la red privada..."
-          brew install tailscale
-          sudo tailscaled install-system-daemon
-          
-          # Generamos nombre único
-          TS_HOSTNAME="gh-mac-novnc-$GITHUB_RUN_ID"
-          
-          # Conectamos
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="$TS_HOSTNAME"
-          
-          # Guardamos la IP para mostrarla luego
-          TS_IP=$(tailscale ip -4)
-          echo "TS_IP=$TS_IP" >> $GITHUB_ENV
+          # Cambiar fondo de escritorio
+          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name wallpaper -Value $wallpaperPath
+          RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters
 
-      - name: 4. DATOS DE CONEXIÓN
+      - name: Set up Chrome Remote Desktop
         run: |
-          echo "======================================================="
-          echo "🎉 SISTEMA LISTO"
-          echo ""
-          echo "1. Asegúrate de tener Tailscale conectado en tu PC."
-          echo "2. Abre esta URL en tu navegador:"
-          echo ""
-          echo "   http://$TS_IP:6080/vnc.html?password=password&autoconnect=true"
-          echo ""
-          echo "======================================================="
-          
-          # Bucle infinito para mantener la sesión
-          while true; do sleep 300; done
+          Write-Host "🔐 Installing Chrome Remote Desktop..."
+          $crdMsi = "$env:TEMP\chromeremotedesktophost.msi"
+          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $crdMsi
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$crdMsi`"", "/quiet", "/norestart" -Wait
+          Remove-Item $crdMsi -Force
+         
+      - name: Bring up Tailscale
+        run: |
+          Write-Host "🔑 Bringing up Tailscale..."
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+         
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-crd-$env:GITHUB_RUN_ID
+          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+
+      - name: Register Chrome Remote Desktop Host
+        run: |
+          Write-Host "🔑 Registering Chrome Remote Desktop host..."
+          $authCode = "4/0AfrIepD1FuolMcHlgVgnbDBf8J5Rbj_JAsOmAqXxBQKwnYuIk0zWcj3TYik1bNKSZWzFQg"
+          $pin = "12345678"
+          & "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" `
+              --code="$authCode" `
+              --redirect-url="https://remotedesktop.google.com/_/oauthredirect" `
+              --name="$Env:COMPUTERNAME" `
+              --pin="$pin"
+
+      - name: Keep CRD Online
+        run: |
+          Write-Host "`n=== Chrome Remote Desktop Active ==="
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          Write-Host "Connect via Chrome Remote Desktop web using the PIN 12345678"
+          Write-Host "==============================`n"
+          while ($true) {
+              Write-Host "[$(Get-Date)] CRD active..."
+              Start-Sleep -Seconds 300
+          }
