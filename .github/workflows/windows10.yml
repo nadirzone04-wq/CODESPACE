@@ -1,35 +1,67 @@
-name: Docker-Windows-Ubuntu
+name: CRD-Windows
 
 on:
   workflow_dispatch:
 
 jobs:
-  run-windows-docker:
-    runs-on: ubuntu-latest
+  crd-windows:
+    runs-on: windows-latest
     timeout-minutes: 3600
 
     steps:
-      - name: 🔑 Instalar y conectar Tailscale
+      - name: Set Wallpaper
         run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-ubuntu-win
-          echo "TAILSCALE_IP=$(tailscale ip -4)" >> $GITHUB_ENV
+          Write-Host "🖼️ Setting custom Windows wallpaper..."
+          # 🔽 Reemplaza este enlace por el link directo de tu imagen (jpg/png)
+          $wallpaperUrl = "https://drive.google.com/uc?export=download&id=1SmRFyijibBDEbnhYSilSGoxtD_-N2KXu"
+          $wallpaperPath = "$env:USERPROFILE\wallpaper.jpg"
 
-      - name: 🪟 Iniciar Windows 11 en Docker
+          # Descargar imagen
+          Invoke-WebRequest -Uri $wallpaperUrl -OutFile $wallpaperPath
+
+          # Cambiar fondo de escritorio
+          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name wallpaper -Value $wallpaperPath
+          RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters
+
+      - name: Set up Chrome Remote Desktop
         run: |
-          echo "Descargando y arrancando el contenedor de Windows..."
-          # Aquí le pasamos todos tus parámetros: puerto 8006, sin KVM, y versión tiny11 (más rápida)
-          sudo docker run -d -p 8006:8006 -p 3389:3389 -e VERSION="tiny11" -e KVM="N" --cap-add NET_ADMIN dockurr/windows
-          
-      - name: 🌐 Mantener vivo y mostrar enlace
+          Write-Host "🔐 Installing Chrome Remote Desktop..."
+          $crdMsi = "$env:TEMP\chromeremotedesktophost.msi"
+          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $crdMsi
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$crdMsi`"", "/quiet", "/norestart" -Wait
+          Remove-Item $crdMsi -Force
+         
+      - name: Bring up Tailscale
         run: |
-          echo -e "\n=== Docker Windows Activo ==="
-          echo "⚠️ ADVERTENCIA: Sin KVM, la instalación inicial será lenta."
-          echo "🌐 Abre tu navegador web y entra en: http://$TAILSCALE_IP:8006"
-          echo -e "===========================\n"
-          
-          # Bucle para mantener la máquina encendida
-          while true; do
-              echo "[$(date)] Windows ejecutándose en Docker..."
-              sleep 300
-          done
+          Write-Host "🔑 Bringing up Tailscale..."
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+         
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-crd-$env:GITHUB_RUN_ID
+          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+
+      - name: Register Chrome Remote Desktop Host
+        run: |
+          Write-Host "🔑 Registering Chrome Remote Desktop host..."
+          $authCode = "\CurrentVersion\remoting_start_host.exe" --code="4/0AfrIepCivIu2dK4vR38NeYCqKWMs0mWUXZcPbudugm369wlZ2ebjIIUFE7hgK-wPKY7x0w"
+          $pin = "12345678"
+          & "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" `
+              --code="$authCode" `
+              --redirect-url="https://remotedesktop.google.com/_/oauthredirect" `
+              --name="$Env:COMPUTERNAME" `
+              --pin="$pin"
+
+      - name: Keep CRD Online
+        run: |
+          Write-Host "`n=== Chrome Remote Desktop Active ==="
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          Write-Host "Connect via Chrome Remote Desktop web using the PIN 12345678"
+          Write-Host "==============================`n"
+          while ($true) {
+              Write-Host "[$(Get-Date)] CRD active..."
+              Start-Sleep -Seconds 300
+          }
