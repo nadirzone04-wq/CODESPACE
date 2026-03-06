@@ -19,7 +19,7 @@ jobs:
         run: |
           echo "Descargando y arrancando el contenedor de macOS..."
           # Lo ejecutamos en segundo plano (-d) y abrimos el puerto 8006
-          sudo docker run -d -p 8006:8006 -e KVM=N dockur/macos
+          sudo docker run -d -p 8006:8006 -e KVM=N dockurr/macos
           
       - name: 🌐 Mantener vivo y mostrar enlace
         run: |
