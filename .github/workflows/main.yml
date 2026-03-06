@@ -1,46 +1,35 @@
-name: macOS-Desktop-VNC
+name: Docker-macOS-Ubuntu
 
 on:
   workflow_dispatch:
 
 jobs:
-  macos-desktop:
-    runs-on: macos-latest
+  run-macos-docker:
+    runs-on: ubuntu-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Instalar y conectar Tailscale
+      - name: 🔑 Instalar y conectar Tailscale
         run: |
-          echo "🔑 Instalando Tailscale..."
-          brew install tailscale
-          
-          # Iniciar el servicio de Tailscale en segundo plano
-          sudo tailscaled > /dev/null 2>&1 &
-          sleep 5
-          
-          # Autenticar Tailscale usando tu secreto
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-mac-$GITHUB_RUN_ID
-          
-          # Guardar la IP para mostrarla luego
-          TS_IP=$(tailscale ip -4)
-          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-ubuntu-docker
+          echo "TAILSCALE_IP=$(tailscale ip -4)" >> $GITHUB_ENV
 
-      - name: Activar Escritorio Remoto Nativo (VNC)
+      - name: 🍎 Iniciar macOS en Docker
         run: |
-          echo "🖥️ Activando Screen Sharing en macOS..."
-          # Este comando es el oficial de Apple para forzar la activación del VNC con una contraseña
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvnclegacy -vnclegacy yes -clientopts -setvncpw -vncpw 12345678 -restart -agent -privs -all
-
-      - name: Mantener la conexión abierta
+          echo "Descargando y arrancando el contenedor de macOS..."
+          # Lo ejecutamos en segundo plano (-d) y abrimos el puerto 8006
+          sudo docker run -d -p 8006:8006 -e KVM=N dockur/macos
+          
+      - name: 🌐 Mantener vivo y mostrar enlace
         run: |
-          echo -e "\n=== macOS Remote Desktop Activo ==="
-          echo "🌐 IP de Tailscale: $TAILSCALE_IP"
-          echo "🖥️  Conéctate usando un cliente VNC (como VNC Viewer, o Screen Sharing en otro Mac)"
-          echo "🔑 Contraseña VNC: 12345678"
-          echo -e "===================================\n"
+          echo -e "\n=== Docker macOS Activo ==="
+          echo "⚠️ ADVERTENCIA: Sin KVM, esto será EXTREMADAMENTE lento."
+          echo "🌐 Abre tu navegador web y entra en: http://$TAILSCALE_IP:8006"
+          echo -e "===========================\n"
           
           # Bucle para mantener la máquina encendida
           while true; do
-              echo "[$(date)] Escritorio activo..."
+              echo "[$(date)] Esperando a que el Mac arranque a pedales..."
               sleep 300
           done
