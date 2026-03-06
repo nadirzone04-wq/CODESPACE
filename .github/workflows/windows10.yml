@@ -1,0 +1,19 @@
+services:
+  windows:
+    image: dockurr/windows
+    container_name: windows
+    environment:
+      VERSION: "11l"
+      KVM: "N"        # ◀ Añadimos esto para decirle que NO use KVM
+    devices:
+      - /dev/net/tun  # ◀ Eliminamos la línea de - /dev/kvm que estaba justo encima
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 8006:8006
+      - 3389:3389/tcp
+      - 3389:3389/udp
+    volumes:
+      - ./windows:/storage
+    restart: always
+    stop_grace_period: 2m
