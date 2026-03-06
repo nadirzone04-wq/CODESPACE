@@ -1,67 +1,46 @@
-name: CRD-Windows
+name: macOS-Desktop-VNC
 
 on:
   workflow_dispatch:
 
 jobs:
-  crd-windows:
-    runs-on: windows-2019
+  macos-desktop:
+    runs-on: macos-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Set Wallpaper
+      - name: Instalar y conectar Tailscale
         run: |
-          Write-Host "🖼️ Setting custom Windows wallpaper..."
-          # 🔽 Reemplaza este enlace por el link directo de tu imagen (jpg/png)
-          $wallpaperUrl = "https://drive.google.com/uc?export=download&id=1SmRFyijibBDEbnhYSilSGoxtD_-N2KXu"
-          $wallpaperPath = "$env:USERPROFILE\wallpaper.jpg"
+          echo "🔑 Instalando Tailscale..."
+          brew install tailscale
+          
+          # Iniciar el servicio de Tailscale en segundo plano
+          sudo tailscaled > /dev/null 2>&1 &
+          sleep 5
+          
+          # Autenticar Tailscale usando tu secreto
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-mac-$GITHUB_RUN_ID
+          
+          # Guardar la IP para mostrarla luego
+          TS_IP=$(tailscale ip -4)
+          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
 
-          # Descargar imagen
-          Invoke-WebRequest -Uri $wallpaperUrl -OutFile $wallpaperPath
-
-          # Cambiar fondo de escritorio
-          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name wallpaper -Value $wallpaperPath
-          RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters
-
-      - name: Set up Chrome Remote Desktop
+      - name: Activar Escritorio Remoto Nativo (VNC)
         run: |
-          Write-Host "🔐 Installing Chrome Remote Desktop..."
-          $crdMsi = "$env:TEMP\chromeremotedesktophost.msi"
-          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $crdMsi
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$crdMsi`"", "/quiet", "/norestart" -Wait
-          Remove-Item $crdMsi -Force
-         
-      - name: Bring up Tailscale
-        run: |
-          Write-Host "🔑 Bringing up Tailscale..."
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
-         
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-crd-$env:GITHUB_RUN_ID
-          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          echo "🖥️ Activando Screen Sharing en macOS..."
+          # Este comando es el oficial de Apple para forzar la activación del VNC con una contraseña
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvnclegacy -vnclegacy yes -clientopts -setvncpw -vncpw 12345678 -restart -agent -privs -all
 
-      - name: Register Chrome Remote Desktop Host
+      - name: Mantener la conexión abierta
         run: |
-          Write-Host "🔑 Registering Chrome Remote Desktop host..."
-          $authCode = "4/0AfrIepD5cR5oYTRfi4O60HWDbLpQ5HnPAGBeC_d0xmGDp2e7v2UGZs0QISX-mKtgTUzpJQ"
-          $pin = "12345678"
-          & "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" `
-              --code="$authCode" `
-              --redirect-url="https://remotedesktop.google.com/_/oauthredirect" `
-              --name="$Env:COMPUTERNAME" `
-              --pin="$pin"
-
-      - name: Keep CRD Online
-        run: |
-          Write-Host "`n=== Chrome Remote Desktop Active ==="
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          Write-Host "Connect via Chrome Remote Desktop web using the PIN 12345678"
-          Write-Host "==============================`n"
-          while ($true) {
-              Write-Host "[$(Get-Date)] CRD active..."
-              Start-Sleep -Seconds 300
-          }
+          echo -e "\n=== macOS Remote Desktop Activo ==="
+          echo "🌐 IP de Tailscale: $TAILSCALE_IP"
+          echo "🖥️  Conéctate usando un cliente VNC (como VNC Viewer, o Screen Sharing en otro Mac)"
+          echo "🔑 Contraseña VNC: 12345678"
+          echo -e "===================================\n"
+          
+          # Bucle para mantener la máquina encendida
+          while true; do
+              echo "[$(date)] Escritorio activo..."
+              sleep 300
+          done
