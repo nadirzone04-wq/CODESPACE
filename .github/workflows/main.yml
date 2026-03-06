@@ -5,7 +5,7 @@ on:
 
 jobs:
   macos-desktop:
-    runs-on: macos-latest
+    runs-on: macos-12
     timeout-minutes: 3600
 
     steps:
