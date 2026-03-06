@@ -1,19 +1,35 @@
-services:
-  windows:
-    image: dockurr/windows
-    container_name: windows
-    environment:
-      VERSION: "11l"
-      KVM: "N"        # ◀ Añadimos esto para decirle que NO use KVM
-    devices:
-      - /dev/net/tun  # ◀ Eliminamos la línea de - /dev/kvm que estaba justo encima
-    cap_add:
-      - NET_ADMIN
-    ports:
-      - 8006:8006
-      - 3389:3389/tcp
-      - 3389:3389/udp
-    volumes:
-      - ./windows:/storage
-    restart: always
-    stop_grace_period: 2m
+name: Docker-Windows-Ubuntu
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-windows-docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: 🔑 Instalar y conectar Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-ubuntu-win
+          echo "TAILSCALE_IP=$(tailscale ip -4)" >> $GITHUB_ENV
+
+      - name: 🪟 Iniciar Windows 11 en Docker
+        run: |
+          echo "Descargando y arrancando el contenedor de Windows..."
+          # Aquí le pasamos todos tus parámetros: puerto 8006, sin KVM, y versión tiny11 (más rápida)
+          sudo docker run -d -p 8006:8006 -p 3389:3389 -e VERSION="tiny11" -e KVM="N" --cap-add NET_ADMIN dockurr/windows
+          
+      - name: 🌐 Mantener vivo y mostrar enlace
+        run: |
+          echo -e "\n=== Docker Windows Activo ==="
+          echo "⚠️ ADVERTENCIA: Sin KVM, la instalación inicial será lenta."
+          echo "🌐 Abre tu navegador web y entra en: http://$TAILSCALE_IP:8006"
+          echo -e "===========================\n"
+          
+          # Bucle para mantener la máquina encendida
+          while true; do
+              echo "[$(date)] Windows ejecutándose en Docker..."
+              sleep 300
+          done
